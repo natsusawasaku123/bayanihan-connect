@@ -1,0 +1,49 @@
+name: Sync from upstream
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out your main branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Merge the original project's main branch
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git remote add upstream https://github.com/HevEbii/bayanihan-connect.git
+          git fetch --no-tags upstream main
+          upstream_sha="$(git rev-parse FETCH_HEAD)"
+
+          if git merge-base --is-ancestor "$upstream_sha" HEAD; then
+            echo 'Your main branch already includes the latest upstream changes.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if ! git merge --no-edit "$upstream_sha"; then
+            git merge --abort || true
+            echo '::error::Upstream changes could not be merged. Resolve the merge locally; see UPSTREAM_SYNC.md.'
+            echo 'Sync stopped without pushing. Resolve the merge locally using UPSTREAM_SYNC.md, then run this workflow again.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          git push origin HEAD:refs/heads/main
+          echo "Synced main with HevEbii/bayanihan-connect at $upstream_sha." >> "$GITHUB_STEP_SUMMARY"
